@@ -29,7 +29,7 @@ def calculate_bad_pixels(mean_dark,std_dark,bp=None):
 
     return {'dead':dead[:],'cold':cold[:],'hot':hot[:],'noisy':high_std[:]}
 
-def denoise(dn=None,thresh=1.5,pf_bp=None,filter='median'):
+def denoise_replace_mask(dn=None,thresh=1.5,pf_bp=None,filter='median'):
     bp_c = calculate_bad_pixels(dn.mean(0),dn.std(0),bp=pf_bp)
     y,x = np.where(bp_c['noisy'] == 1)
 
@@ -45,6 +45,31 @@ def denoise(dn=None,thresh=1.5,pf_bp=None,filter='median'):
     new_bp = calculate_bad_pixels(denoised_dark.mean(0),denoised_dark.std(0),bp=pf_bp)
     return bp_c,new_bp,denoised_dark
 
+def denoise_replace_values(dn=None,thresh=1.5,pf_bp=None,filter='mean'):
+    bp_c = calculate_bad_pixels(dn.mean(0),dn.std(0),bp=pf_bp)
+    y,x = np.where(bp_c['noisy'] == 1)
+
+    new_vals = dn.copy()
+    
+    if filter == 'mean':
+        try:
+            for xx,yy in zip(x,y):
+                bad_inds = np.where(dn[:,yy,xx] > np.nanmean(dn[:,yy,xx],0) + thresh*np.nanstd(dn[:,yy,xx],0))[0]
+                good_inds = np.where(dn[:,yy,xx] <= np.nanmean(dn[:,yy,xx],0) + thresh*np.nanstd(dn[:,yy,xx],0))[0]
+                new_vals[bad_inds,yy,xx] = np.nanmean(dn[good_inds,yy,xx],0)
+        except:
+            pdb.set_trace()
+    elif filter == 'median':
+        for xx,yy in zip(x,y):
+            inds = np.where(dn[:,yy,xx] > np.nanmedian(dn[:,yy,xx],0) + thresh*scipy.stats.iqr(dn[:,yy,xx]))[0]
+            new_vals[inds,yy,xx] = np.nan
+            new_vals[inds,yy,xx] = np.nanmedian(new_vals[:,yy,xx],0)
+            
+    denoised_dark = new_vals.copy()
+    
+    new_bp = calculate_bad_pixels(denoised_dark.mean(0),denoised_dark.std(0),bp=pf_bp)
+    return bp_c,new_bp,denoised_dark
+
 def create_denoised_dark(ID=None,thresh=1.5,pf_bp=None):
     #ID is the filename
     dir_name = os.path.dirname(ID)
@@ -56,7 +81,7 @@ def create_denoised_dark(ID=None,thresh=1.5,pf_bp=None):
     
     with Dataset(new_fname,'r+') as fid:
         dn = fid['Frame/PixelData'][:]
-        bp_c,new_bp,new_dark = denoise(dn,thresh=thresh,pf_bp=pf_bp)
+        bp_c,new_bp,new_dark = denoise_replace_values(dn,thresh=thresh,pf_bp=pf_bp)
         fid['Frame/PixelData'][:] = new_dark.copy()
     return
 
