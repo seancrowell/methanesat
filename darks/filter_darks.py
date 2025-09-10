@@ -35,9 +35,9 @@ def denoise_replace_mask(dn=None,thresh=1.5,pf_bp=None,filter='median'):
 
     new_mask = np.zeros(dn.shape)
     if filter == 'mean':
-        new_mask[:,y,x] = np.array([dn[:,yy,xx] > np.nanmean(dn[:,yy,xx],0) + thresh*np.nanstd(dn[:,yy,xx],0) for xx,yy in zip(x,y)]).T
+        new_mask[:,y,x] = np.array([np.abs(dn[:,yy,xx] - np.nanmean(dn[:,yy,xx],0)) > thresh*np.nanstd(dn[:,yy,xx],0) for xx,yy in zip(x,y)]).T
     elif filter == 'median':
-        new_mask[:,y,x] = np.array([dn[:,yy,xx] > np.nanmedian(dn[:,yy,xx],0) + thresh*scipy.stats.iqr(dn[:,yy,xx]) for xx,yy in zip(x,y)]).T
+        new_mask[:,y,x] = np.array([np.abs(dn[:,yy,xx] - np.nanmean(dn[:,yy,xx],0)) <= thresh*scipy.stats.iqr(dn[:,yy,xx]) for xx,yy in zip(x,y)]).T
 
     denoised_dark = dn.copy()
     denoised_dark.mask[:,y,x] = np.logical_or(denoised_dark.mask[:,y,x],new_mask[:,y,x])
@@ -71,14 +71,13 @@ def outlier_filter_replace_values(dn=None,thresh=1.5,pf_bp=None,filter='mean'):
     new_bp = calculate_bad_pixels(filter_dark.mean(0),filter_dark.std(0),bp=pf_bp)
     return bp_c,new_bp,filter_dark
 
-def create_filtered_dark(ID=None,thresh=1.5,pf_bp=None):
+def create_filtered_dark(ID=None,thresh=1.5,pf_bp=None,out_dir=None):
     #ID is the filename
-    dir_name = os.path.dirname(ID)
     fname = os.path.basename(ID)
-    new_fname = f'filter/{dir_name}/{fname}'
+    new_fname = f'{out_dir}/{fname}'
 
-    os.makedirs(f'filter/{dir_name}',exist_ok=True)
-    shutil.copy2(ID,f'filter/{dir_name}/{fname}')
+    os.makedirs(f'{out_dir}',exist_ok=True)
+    shutil.copy2(ID,new_fname)
     
     with Dataset(new_fname,'r+') as fid:
         dn = fid['Frame/PixelData'][:]
@@ -123,21 +122,22 @@ def run_function_in_parallel(fun,args_list):
 
 if __name__ == "__main__":
 
-    os.chdir('/media/sata/methanesat/darks/')
-
+    
     ch4_bp = Dataset('../level1a_calibration_MSAT_20250722.0.0_CH4_BadPixelMap_CH4_20250722.nc','r')['BadPixelMap'][:] 
-    ch4_files = [f.rstrip('\n') for f in open('ch4_dark_files').readlines()]
-    ch4_folders = [os.path.dirname(fi) for fi in ch4_files]
+    ch4_files = sorted(glob.glob('/mnt/share1/sean/original/*CH4*'))
+    #ch4_files = [f.rstrip('\n') for f in open('ch4_dark_files').readlines()]
+    #ch4_folders = [os.path.dirname(fi) for fi in ch4_files]
     ch4_args_list = [
-                    {'ID':ch4_files[i],'pf_bp':ch4_bp} for i in range(len(ch4_files))
+                    {'ID':ch4_files[i],'pf_bp':ch4_bp,'out_dir':'/mnt/share1/sean/filtered'} for i in range(len(ch4_files))
                     ]
     ch4_out = run_function_in_parallel(create_filtered_dark,ch4_args_list)
 
     
     o2_bp = Dataset('../level1a_calibration_MSAT_20250722.0.0_O2_BadPixelMap_O2_20250722.nc','r')['BadPixelMap'][:] 
-    o2_files = [f.rstrip('\n') for f in open('o2_dark_files').readlines()]
-    o2_folders = [os.path.dirname(fi) for fi in o2_files]
+    o2_files = sorted(glob.glob('/mnt/share1/sean/original/*O2*'))
+    #o2_files = [f.rstrip('\n') for f in open('o2_dark_files').readlines()]
+    #o2_folders = [os.path.dirname(fi) for fi in o2_files]
     o2_args_list = [
-                    {'ID':o2_files[i],'pf_bp':o2_bp} for i in range(len(o2_files))
+                    {'ID':o2_files[i],'pf_bp':o2_bp,'out_dir':'/mnt/share1/sean/filtered'} for i in range(len(o2_files))
                     ]
     o2_out = run_function_in_parallel(create_filtered_dark,o2_args_list)
