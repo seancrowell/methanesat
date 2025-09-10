@@ -1,7 +1,7 @@
 # Use NCO to compute Mean/Std of all dark files
 import numpy as np
 from pathlib import Path
-import glob,os,pdb
+import glob,os,pdb,sys
 import subprocess
 from netCDF4 import Dataset
 import concurrent.futures
@@ -73,9 +73,9 @@ def calc_mean_std(ID=None,file=None):
     
     mean_dn = np.nanmean(dn,0)
     std_dn = np.nanstd(dn,0)
-    out_dir = f'mean_darks/{os.path.dirname(file)}'
+    out_dir = f'./mean_darks/{os.path.dirname(file)}'
     os.makedirs(out_dir,exist_ok=True)
-    out_fname = f'mean_darks/{file[:-3]}_mean.nc'
+    out_fname = f'./mean_darks/{file[:-3]}_mean.nc'
     
     if os.path.exists(out_fname): os.remove(out_fname)
     with Dataset(out_fname,'w') as fid:
@@ -103,18 +103,23 @@ def calc_mean_std(ID=None,file=None):
 
 
 if __name__ == "__main__":
-    ch4_files = list(Path('./2024/').rglob('*CH4*.nc'))
-    ch4_files.extend(list(Path('./2025/').rglob('*CH4*.nc')))
+    
+    try:
+        dir = sys.argv[1]
+    except:
+        print('usage: python calc_mean_std.py directory')
+    ch4_files = list(Path(f'{dir}/2024/').rglob('*CH4*.nc'))
+    ch4_files.extend(list(Path(f'{dir}/2025/').rglob('*CH4*.nc')))
     ch4_files = sorted(ch4_files)
     
-    o2_files = list(Path('./2024/').rglob('*O2*.nc'))
-    o2_files.extend(list(Path('./2025/').rglob('*O2*.nc')))
+    o2_files = list(Path(f'{dir}/2024/').rglob('*O2*.nc'))
+    o2_files.extend(list(Path(f'{dir}/2025/').rglob('*O2*.nc')))
     o2_files = sorted(o2_files)
     
     os.makedirs('mean_darks',exist_ok=True)
-    o2_args_list = [{'ID':str(fi),'file':str(fi)} for fi in o2_files]
+    o2_args_list = [{'ID':str(fi),'file':str(fi),'dir':str(dir)} for fi in o2_files]
     o2_out = run_function_in_parallel(calc_mean_std,o2_args_list)
-    ch4_args_list = [{'ID':str(fi),'file':str(fi)} for fi in ch4_files]
+    ch4_args_list = [{'ID':str(fi),'file':str(fi),'dir':str(dir)} for fi in ch4_files]
     ch4_out = run_function_in_parallel(calc_mean_std,ch4_args_list)
     
     #for ifi,fi in enumerate(o2_files):

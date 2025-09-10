@@ -3,7 +3,7 @@ from netCDF4 import Dataset
 import numpy as np
 from pathlib import Path
 import matplotlib.pyplot as plt
-import glob,os,pdb
+import glob,os,pdb,sys
 import concurrent.futures
 import warnings
 
@@ -58,7 +58,8 @@ def calculate_bad_pixels(mean_dark,std_dark,bp=None):
     cold = dead.copy()
     high_std = dead.copy()
     if bp is None:
-    
+        bp = np.zeros(std_dark.shape)
+
     dead[
         np.logical_and(std_dark < 1,bp<1)
     ] = 1  # Dead Pixels
@@ -81,14 +82,15 @@ def calculate_bad_pixels(mean_dark,std_dark,bp=None):
 
     return {'dead':dead[:],'cold':cold[:],'hot':hot[:],'noisy':high_std[:]}
 
-def plot_dark_panel(file=None,ID=None,fpa='O2',pf_bp=None):
+def plot_dark_panel(file=None,ID=None,fpa='O2',pf_bp=None,savedir='figs/mean_darks/'):
     f = Dataset(file)
     
     collect_id = str(file).split('/')[-1].split('_')[5]
-    os.makedirs(f'./figs/{os.path.dirname(file)}',exist_ok=True)
+    os.makedirs(f'{savedir}',exist_ok=True)
     
-    mean_dark = f['mean_dark'][:]
-    std_dark = f['std_dark'][:]
+    dn = f['Frame/PixelData'][:]
+    mean_dark = np.nanmean(dn,0)
+    std_dark = np.nanstd(dn,0)
     bp = calculate_bad_pixels(mean_dark,std_dark,bp=pf_bp)
 
     n_rows = 3
@@ -132,7 +134,7 @@ def plot_dark_panel(file=None,ID=None,fpa='O2',pf_bp=None):
     fig.tight_layout()
     fig.suptitle(f'{collect_id} {fpa}')
     fname = '_'.join(file.split('/')[:-1])+f'_{fpa}_bp_panel.png'
-    fig.savefig(f'figs/mean_darks/{fname}')
+    fig.savefig(f'{savedir}/{fname}')
     plt.close('all')
     return
 
@@ -159,18 +161,27 @@ def plot_all_frames(ID=None,file=None,fpa='O2'):
 
 if __name__ == "__main__":
 
-    plot_type = 'mean'
     os.chdir('/media/sata/methanesat/darks/')
+    try:
+        dark_dir = sys.argv[2]
+        fig_save_dir = sys.argv[3]
+        plot_type = sys.argv[1]
+    except:
+        print('usage: python plot_darks.py plot_type dark_dir fig_save_dir')
+        sys.exit()
 
     if plot_type == 'mean':
-        ch4_files = np.array(sorted(list(Path('./mean_darks/').rglob('*_CH4_*.nc'))))
-        o2_files = np.array(sorted(list(Path('./mean_darks/').rglob('*_O2_*.nc'))))
+        ch4_files = np.array(sorted(list(Path(dark_dir).rglob('*_CH4_*.nc'))))
+        o2_files = np.array(sorted(list(Path(dark_dir).rglob('*_O2_*.nc'))))
         ch4_bp = Dataset('../level1a_calibration_MSAT_20250722.0.0_CH4_BadPixelMap_CH4_20250722.nc','r')['BadPixelMap'][:] 
         o2_bp = Dataset('../level1a_calibration_MSAT_20250722.0.0_O2_BadPixelMap_O2_20250722.nc','r')['BadPixelMap'][:] 
-        ch4_args = [{'ID':str(fi),'file':str(fi),'fpa':'CH4','pf_bp':ch4_bp} for fi in ch4_files]
+        ch4_args = [{'ID':str(fi),'file':str(fi),'fpa':'CH4','pf_bp':ch4_bp,'savedir':fig_save_dir+'/ch4/'} for fi in ch4_files]
+        #plot_dark_panel(**ch4_args[0])
         run_function_in_parallel(plot_dark_panel,ch4_args)
-        o2_args = [{'ID':str(fi),'file':str(fi),'fpa':'O2','pf_bp':o2_bp} for fi in o2_files]
+        o2_args = [{'ID':str(fi),'file':str(fi),'fpa':'O2','pf_bp':o2_bp,'savedir':fig_save_dir+'/o2/'} for fi in o2_files]
+        #plot_dark_panel(**o2_args[0])
         run_function_in_parallel(plot_dark_panel,o2_args)
+        
     elif plot_type == 'frames':
         all_ch4_files = list(Path('./2024/').rglob('*CH4*.nc'))
         all_ch4_files.extend(list(Path('./2025/').rglob('*CH4*.nc')))
